@@ -9,7 +9,7 @@
 
   <PropertyGroup>
       <PackageId>Serilog.Sinks.Network.Net48</PackageId>
-      <Version>3.0.0</Version>
+      <Version>3.0.1</Version>
       <Authors>Your Name</Authors>
       <Description>Fork of Serilog.Sinks.Network for net48</Description>
       <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -19,6 +19,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Serilog" Version="4.2.0"/>
+    <PackageReference Include="Serilog" Version="4.0.1"/>
   </ItemGroup>
 </Project>
