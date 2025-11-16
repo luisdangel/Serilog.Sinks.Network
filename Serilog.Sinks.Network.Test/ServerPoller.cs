@@ -17,30 +17,127 @@ namespace Serilog.Sinks.Network.Test
             var result = new List<byte>();
 
             Socket clientSocket;
-            if (udp)
+            try
             {
-                clientSocket = socket;
-            }
-            else
-            {
-                clientSocket = await socket.AcceptAsync(cts.Token);
-            }
-            var isDone = false;
-            while (!isDone)
-            {
-                int readResult = await clientSocket.ReceiveAsync(buffer, SocketFlags.None, cts.Token);
-                for (var i = 0; i < readResult; i++)
+                if (udp)
                 {
-                    result.Add(buffer[i]);
+                    clientSocket = socket;
+                }
+                else
+                {
+                    //clientSocket = await socket.AcceptAsync(cts.Token);
+                    // AcceptAsync with CancellationToken is NOT supported in .NET Framework
+                    // Use Task-based wrapper with cancellation
+                    clientSocket = await AcceptAsyncWithCancellation(socket, cts.Token);
                 }
 
-                if (readResult < buffer.Length)
+                var isDone = false;
+                while (!isDone && !cts.Token.IsCancellationRequested)
                 {
-                    isDone = true;
+                    int bytesRead = await ReceiveAsyncWithCancellation(clientSocket, buffer, SocketFlags.None, cts.Token);
+
+                    if (bytesRead <= 0)
+                    {
+                        isDone = true;
+                        break;
+                    }
+
+                    for (int i = 0; i < bytesRead; i++)
+                    {
+                        result.Add(buffer[i]);
+                    }
+
+                    if (bytesRead < buffer.Length)
+                    {
+                        isDone = true;
+                    }
+                }
+
+                if (cts.Token.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(cts.Token);
+                }
+
+                return Encoding.ASCII.GetString(result.ToArray());
+            }
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            {
+                throw; // Re-throw timeout/cancellation
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
+
+        private static Task<Socket> AcceptAsyncWithCancellation(Socket socket, CancellationToken token)
+        {
+            var tcs = new TaskCompletionSource<Socket>();
+
+            token.Register(() =>
+            {
+                tcs.TrySetCanceled(token);
+            });
+
+            socket.BeginAccept(ar =>
+            {
+                try
+                {
+                    var client = socket.EndAccept(ar);
+                    tcs.TrySetResult(client);
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            }, null);
+
+            return tcs.Task;
+        }
+
+        private static Task<int> ReceiveAsyncWithCancellation(Socket socket, byte[] buffer, SocketFlags flags, CancellationToken token)
+        {
+            var tcs = new TaskCompletionSource<int>();
+            var args = new SocketAsyncEventArgs();
+            args.SetBuffer(buffer, 0, buffer.Length);
+            args.SocketFlags = flags;
+
+            var registration = token.Register(() =>
+            {
+                tcs.TrySetCanceled(token);
+                // Attempt to cancel pending operation
+                try { socket.Shutdown(SocketShutdown.Receive); } catch { }
+            });
+
+            args.Completed += (s, e) =>
+            {
+                registration.Dispose();
+                if (e.SocketError == SocketError.Success)
+                {
+                    tcs.TrySetResult(e.BytesTransferred);
+                }
+                else
+                {
+                    tcs.TrySetException(new SocketException((int)e.SocketError));
+                }
+            };
+
+            bool willRaiseEvent = socket.ReceiveAsync(args);
+            if (!willRaiseEvent)
+            {
+                // Operation completed synchronously
+                registration.Dispose();
+                if (args.SocketError == SocketError.Success)
+                {
+                    tcs.TrySetResult(args.BytesTransferred);
+                }
+                else
+                {
+                    tcs.TrySetException(new SocketException((int)args.SocketError));
                 }
             }
-            
-            return Encoding.ASCII.GetString(result.ToArray());
+
+            return tcs.Task;
         }
     }
 }

@@ -19,7 +19,7 @@ namespace Serilog.Sinks.Network.Test
         {
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-            socket.Listen();
+            socket.Listen(100);
 
             var logger = new LoggerConfiguration()
                 .WriteTo.TCPSink(IPAddress.Loopback, ((IPEndPoint)socket.LocalEndPoint!).Port, formatter)
@@ -53,7 +53,7 @@ namespace Serilog.Sinks.Network.Test
         [Fact]
         public async Task CanLogHelloWorld_WithRawFormatter()
         {
-            using var fixture =ConfigureTestLogger(new CompactJsonFormatter());
+            using var fixture = ConfigureTestLogger(new CompactJsonFormatter());
             var arbitraryMessage = nameof(WhenLoggingViaTcp) + "CanLogHelloWorld_WithCompactJsonFormatter" + Guid.NewGuid();
             fixture.Logger.Information(arbitraryMessage);
             var receivedData = await ServerPoller.PollForReceivedData(fixture.Socket);

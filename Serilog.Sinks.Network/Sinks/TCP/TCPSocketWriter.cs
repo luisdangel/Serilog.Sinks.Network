@@ -59,7 +59,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
         public event Action<Exception> LoggingFailureHandler = ex =>
         {
             UnexpectedErrorLogger(
-                ex, 
+                ex,
                 (x, socketError) =>
                 {
                     if (socketError == null)
@@ -74,7 +74,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                             x.Message,
                             socketError);
                     }
-                    
+
                 });
         };
 
@@ -86,7 +86,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
             {
                 if (current is SocketException)
                 {
-                    socketErrorCode = ((SocketException) current).SocketErrorCode;
+                    socketErrorCode = ((SocketException)current).SocketErrorCode;
                 }
 
                 current = current.InnerException;
@@ -103,9 +103,9 @@ namespace Serilog.Sinks.Network.Sinks.TCP
         /// <param name="writeTimeoutMs">The amount of time, in milliseconds, before timing out any write operation. Defaults to 30_000.</param>
         /// <param name="disposeTimeoutMs">The amount of time, in milliseconds, before timing out .Dispose and giving up flushing messages. Defaults to 30_000.</param>
         public TcpSocketWriter(
-            Uri uri, 
+            Uri uri,
             int? writeTimeoutMs = null,
-            int? disposeTimeoutMs = null, 
+            int? disposeTimeoutMs = null,
             int maxQueueSize = 5000)
         {
             _eventQueue = new FixedSizeQueue<string>(maxQueueSize);
@@ -148,11 +148,11 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                 await client.ConnectAsync(uri.Host, uri.Port);
                 var stream = client.GetStream();
                 stream.WriteTimeout = (int)_writeTimeout.TotalMilliseconds;
-                
+
                 if (uri.Scheme.ToLowerInvariant() != "tls")
                     return stream;
-                
-                var sslStream = new SslStream(client.GetStream(), false, null , null);
+
+                var sslStream = new SslStream(client.GetStream(), false, null, null);
                 await sslStream.AuthenticateAsClientAsync(uri.Host);
                 return sslStream;
             }
@@ -187,7 +187,10 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                     try
                     {
                         var message = Encoding.UTF8.GetBytes(entry);
-                        await _stream.WriteAsync(message, _disposingCts.Token);
+                        // Manual cancellation check before async write
+                        _disposingCts.Token.ThrowIfCancellationRequested();
+
+                        await _stream.WriteAsync(message, 0, message.Length);
                         await _stream.FlushAsync(_disposingCts.Token);
                         // No exception, it was sent
                         entry = null;
@@ -210,7 +213,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
         {
             while (_eventQueue.Count > 0)
             {
-                if(_forceQuitCts.Token.IsCancellationRequested)
+                if (_forceQuitCts.Token.IsCancellationRequested)
                     break;
 
                 if (entry == null)
@@ -231,7 +234,10 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                         try
                         {
                             var message = Encoding.UTF8.GetBytes(entry);
-                            await _stream.WriteAsync(message, _forceQuitCts.Token);
+
+                            // Manual cancellation check before async write
+                            _disposingCts.Token.ThrowIfCancellationRequested();
+                            await _stream.WriteAsync(message, 0, message.Length);
                             await _stream.FlushAsync(_forceQuitCts.Token);
                             // No exception, it was sent
                             entry = null;
@@ -246,7 +252,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                 }
             }
         }
-        
+
         public void Dispose()
         {
             // The following operations are idempotent. Issue a cancellation to tell the
@@ -258,7 +264,7 @@ namespace Serilog.Sinks.Network.Sinks.TCP
                 Task.Run(async () => await _disposed.Task),
                 Task.Delay(_disposeTimeout),
             }).Wait();
-            
+
             _forceQuitCts.Cancel();
         }
 

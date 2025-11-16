@@ -107,4 +107,5 @@ The LogstashJsonFormatter flattens that structure so it is more likely to fit in
 
 # Acknowledgements
 
-Adapted from [Serilog Splunk Sink](https://github.com/serilog/serilog-sinks-splunk) and [Splunk .Net Logging](https://github.com/splunk/splunk-library-dotnetlogging) both Apache 2.0 licensed
+Fork of https://github.com/serilog-contrib/Serilog.Sinks.Network by Serilog Contributors
+Adapter to run on net48
